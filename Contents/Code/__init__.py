@@ -25,10 +25,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import urllib2
-import SocketServer
-from SimpleHTTPServer import SimpleHTTPRequestHandler
-from urllib import urlencode
+import api as API
+import proxy as Proxy
+import common as Common
 
 PREFIX_V = '/video/mailru'
 PREFIX_M = '/music/mailru'
@@ -41,23 +40,15 @@ ICON_M = 'icon-music.png'
 ICON_P = 'icon-photo.png'
 TITLE = u'%s' % L('Title')
 
-MAILRU_URL = 'http://my.mail.ru/'
-MAILRU_LIMIT = 50
-MAILRU_USER_AGENT = (
-    'Mozilla/5.0 (X11; Linux i686; rv:32.0) '
-    'Gecko/20100101 Firefox/32.0'
-)
-
 
 ###############################################################################
 # Init
 ###############################################################################
 
 def Start():
-
     # HTTP.CacheTime = CACHE_1HOUR
     HTTP.CacheTime = 0 # FIXME
-    HTTP.Headers['User-Agent'] = MAILRU_USER_AGENT
+    HTTP.Headers['User-Agent'] = Common.MAILRU_USER_AGENT
 
     if ValidateAuth():
         Thread.Create(VideoProxy)
@@ -83,7 +74,7 @@ def ValidatePrefs():
 
 
 def ValidateAuth():
-    return (Prefs['username'] and Prefs['password'] and CheckAuth())
+    return (Prefs['username'] and Prefs['password'] and API.CheckAuth())
 
 
 ###############################################################################
@@ -98,7 +89,7 @@ def VideoMainMenu():
     oc = ObjectContainer(title2=TITLE, no_cache=True)
 
     oc.add(DirectoryObject(
-        key=Callback(VideoListGroups, uid=Prefs['username']),
+        key=Callback(VideoListChannels, uid=Prefs['username']),
         title=u'%s' % L('My channels')
     ))
 
@@ -112,13 +103,13 @@ def VideoMainMenu():
     ))
 
     oc.add(DirectoryObject(
-        key=Callback(VideoListGroups, uid=Prefs['username']),
-        title=u'%s' % L('Catalogues')
+        key=Callback(VideoListChannels, uid=Prefs['username'], all=True),
+        title=u'%s' % L('Channels')
     ))
 
-    oc.add(DirectoryObject(
+    oc.add(DirectoryObject( # FIXME
         key=Callback(VideoListGroups, uid=Prefs['username']),
-        title=u'%s' % L('Channels')
+        title=u'%s' % L('Catalogues')
     ))
 
     oc.add(InputDirectoryObject(
@@ -136,12 +127,12 @@ def VideoMainMenu():
 
 @route(PREFIX_V + '/groups')
 def VideoListGroups(uid, offset=0):
-    return GetGroups(VideoAlbums, VideoListGroups, uid, offset);
+    return Common.GetGroups(VideoAlbums, VideoListGroups, uid, offset);
 
 
 @route(PREFIX_V + '/friends')
 def VideoListFriends(uid, offset=0):
-    return GetFriends(VideoAlbums, VideoListFriends, uid, offset)
+    return Common.GetFriends(VideoAlbums, VideoListFriends, uid, offset)
 
 
 @route(PREFIX_V + '/albums')
@@ -153,6 +144,11 @@ def VideoAlbums(uid, title, offset=0):
     return AddVideoAlbums(oc, uid, offset)
 
 
+@route(PREFIX_V + '/channels')
+def VideoListChannels():
+    return
+
+
 @route(PREFIX_V + '/list')
 def VideoList(uid, title, album_id=None, offset=0):
 
@@ -162,15 +158,15 @@ def VideoList(uid, title, album_id=None, offset=0):
         'arg_offset': offset
     }
 
-    if '@' in uid:  # user
+    if album_id is not None: # album
+        params['arg_album'] = album_id
+        params['arg_type'] = 'album_items'
+    elif '@' in uid:         # user
         params['arg_type'] = 'user'
-    else:           # group
+    else:                    # group
         params['arg_type'] = 'community_items'
 
-    if album_id is not None:
-        params['arg_album'] = album_id
-
-    res = ApiRequest('video.get_list', params)
+    res = API.Request('video.get_list', params)
 
     if not res or not res['total']:
         return NoContents()
@@ -190,7 +186,7 @@ def VideoList(uid, title, album_id=None, offset=0):
             except:
                 continue
 
-    offset = res['offset']
+    offset = offset+int(Prefs['video_per_page'])
     if offset < res['total']:
         oc.add(NextPageObject(
             key=Callback(
@@ -235,28 +231,18 @@ def VideoView(vid, url):
 
 @route(PREFIX_V + '/proxy')
 def VideoProxy():
-    httpd = SocketServer.ForkingTCPServer(
-        (Network.Address, int(Prefs['proxy_port'])),
-        VideoProxyHandler
-    )
-    Log.Debug('Start proxy on  %s:%d' % (
-        Network.Address,
-        int(Prefs['proxy_port'])
-    ))
-    httpd.serve_forever()
+    Proxy.Server()
 
 
 def AddVideoAlbums(oc, uid, offset=0):
-    # albums = ApiRequest('video.getAlbums', {
-    #     'owner_id': uid,
-    #     'extended': 1,
-    #     'count': MAILRU_LIMIT,
-    #     'offset': offset
-    # })
+    albums = API.Request('video.get_albums', {
+        'user': uid,
+        'arg_limit': Common.MAILRU_LIMIT,
+        'arg_offset': offset
+    })
 
-    # has_albums = albums and albums['count']
-
-    has_albums = False
+    # First album is default
+    has_albums = albums and albums['total'] > 1
     offset = int(offset)
 
     if not offset:
@@ -275,24 +261,20 @@ def AddVideoAlbums(oc, uid, offset=0):
     if has_albums:
         for item in albums['items']:
             # display playlist title and number of videos
-            title = u'%s: %s (%d)' % (L('Album'), item['title'], item['count'])
-            if 'photo_320' in item:
-                thumb = item['photo_320']
-            else:
-                thumb = R(ICON)
+            title = u'%s: %s (%d)' % (L('Album'), item['Name'], item['Count'])
 
             oc.add(DirectoryObject(
                 key=Callback(
                     VideoList, uid=uid,
-                    title=u'%s' % item['title'],
-                    album_id=item['id']
+                    title=u'%s' % item['Name'],
+                    album_id=item['ID']
                 ),
                 title=title,
-                thumb=thumb
+                thumb=item['CoverImgPath']
             ))
 
-        offset = offset+MAILRU_LIMIT
-        if offset < albums['count']:
+        offset = offset+Common.MAILRU_LIMIT
+        if offset < albums['total']:
             oc.add(NextPageObject(
                 key=Callback(
                     VideoAlbums,
@@ -331,14 +313,7 @@ def GetVideoObject(item):
         items=[
             MediaObject(
                 parts=[PartObject(
-                    key='http://%s:%d/?%s' % (
-                        Network.Address,
-                        int(Prefs['proxy_port']),
-                        urlencode({
-                            'url': item['MetaUrl'],
-                            'key': r+'p'
-                        })
-                    )
+                    key=Proxy.GetUrl(item['MetaUrl'], r+'p')
                 )],
                 video_resolution=r,
                 container=Container.MP4,
@@ -383,12 +358,12 @@ def MusicMainMenu():
 
 @route(PREFIX_M + '/groups')
 def MusicListGroups(uid, offset=0):
-    return GetGroups(MusicAlbums, MusicListGroups, uid, offset)
+    return Common.GetGroups(MusicAlbums, MusicListGroups, uid, offset)
 
 
 @route(PREFIX_M + '/friends')
 def MusicListFriends(uid, offset=0):
-    return GetFriends(MusicAlbums, MusicListFriends, uid, offset)
+    return Common.GetFriends(MusicAlbums, MusicListFriends, uid, offset)
 
 
 @route(PREFIX_M + '/albums')
@@ -411,7 +386,7 @@ def MusicList(uid, title, album_id=None, offset=0):
     if album_id is not None:
         params['album_id'] = album_id
 
-    res = ApiRequest('audio.get', params)
+    res = API.Request('audio.get', params)
 
     if not res or not res['count']:
         return NoContents()
@@ -425,7 +400,7 @@ def MusicList(uid, title, album_id=None, offset=0):
     for item in res['items']:
         oc.add(GetTrackObject(item))
 
-    offset = int(offset)+MAILRU_LIMIT
+    offset = int(offset)+Common.MAILRU_LIMIT
     if offset < res['count']:
         oc.add(NextPageObject(
             key=Callback(
@@ -455,11 +430,12 @@ def MusicPlay(info):
     )
 
 
+# TODO - does not support
 def AddMusicAlbums(oc, uid, offset=0):
 
-    albums = ApiRequest('audio.getAlbums', {
+    albums = API.Request('audio.getAlbums', {
         'owner_id': uid,
-        'count': MAILRU_LIMIT,
+        'count': Common.MAILRU_LIMIT,
         'offset': offset
     })
 
@@ -492,7 +468,7 @@ def AddMusicAlbums(oc, uid, offset=0):
                 title=title,
             ))
 
-        offset = offset+MAILRU_LIMIT
+        offset = offset+Common.MAILRU_LIMIT
         if offset < albums['count']:
             oc.add(NextPageObject(
                 key=Callback(
@@ -554,12 +530,12 @@ def PhotoMainMenu():
 
 @route(PREFIX_P + '/groups')
 def PhotoListGroups(uid, offset=0):
-    return GetGroups(PhotoAlbums, PhotoListGroups, uid, offset)
+    return Common.GetGroups(PhotoAlbums, PhotoListGroups, uid, offset)
 
 
 @route(PREFIX_P + '/friends')
 def PhotoListFriends(uid, offset=0):
-    return GetFriends(PhotoAlbums, PhotoListFriends, uid, offset)
+    return Common.GetFriends(PhotoAlbums, PhotoListFriends, uid, offset)
 
 
 @route(PREFIX_P + '/albums')
@@ -570,7 +546,7 @@ def PhotoAlbums(uid, title, offset=0):
 
 @route(PREFIX_P + '/list')
 def PhotoList(uid, title, album_id, offset=0):
-    res = ApiRequest('photos.get', {
+    res = API.Request('photos.get', {
         'owner_id': uid,
         'album_id': album_id,
         'extended': 0,
@@ -592,7 +568,7 @@ def PhotoList(uid, title, album_id, offset=0):
     for item in res['items']:
         oc.add(GetPhotoObject(item))
 
-    offset = int(offset)+MAILRU_LIMIT
+    offset = int(offset)+Common.MAILRU_LIMIT
     if offset < res['count']:
         oc.add(NextPageObject(
             key=Callback(
@@ -610,12 +586,12 @@ def PhotoList(uid, title, album_id, offset=0):
 
 def AddPhotoAlbums(oc, uid, offset=0):
 
-    albums = ApiRequest('photos.getAlbums', {
+    albums = API.Request('photos.getAlbums', {
         'owner_id': uid,
         'need_covers': 1,
         'photo_sizes': 1,
         'need_system': 1,
-        'count': MAILRU_LIMIT,
+        'count': Common.MAILRU_LIMIT,
         'offset': offset
     })
 
@@ -641,7 +617,7 @@ def AddPhotoAlbums(oc, uid, offset=0):
                 thumb=thumb,
             ))
 
-        offset = offset+MAILRU_LIMIT
+        offset = offset+Common.MAILRU_LIMIT
         if offset < albums['count']:
             oc.add(NextPageObject(
                 key=Callback(
@@ -700,7 +676,7 @@ def Search(query, title=u'%s' % L('Search'), search_type='video', offset=0):
         if Prefs['search_adult']:
             params['adult'] = 1
 
-    res = ApiRequest(search_type+'.search', params)
+    res = API.Request(search_type+'.search', params)
 
     if not res or not res['count']:
         return NoContents()
@@ -720,7 +696,7 @@ def Search(query, title=u'%s' % L('Search'), search_type='video', offset=0):
     for item in res['items']:
         oc.add(method(item))
 
-    offset = int(offset)+MAILRU_LIMIT
+    offset = int(offset)+Common.MAILRU_LIMIT
     if offset < res['count']:
         oc.add(NextPageObject(
             key=Callback(
@@ -748,238 +724,3 @@ def NoContents():
         header=u'%s' % L('Error'),
         message=u'%s' % L('No entries found')
     )
-
-
-def NormalizeExternalUrl(url):
-    # Rutube service crutch
-    if Regex('//rutube.ru/[^/]+/embed/[0-9]+').search(url):
-        url = HTML.ElementFromURL(url, cacheTime=CACHE_1WEEK).xpath(
-            '//link[contains(@rel, "canonical")]'
-        )
-        if url:
-            return url[0].get('href')
-
-    return url
-
-
-def GetGroups(callback_action, callback_page, uid, offset):
-    '''Get groups container with custom callback'''
-    oc = ObjectContainer(
-        title2=u'%s' % L('My groups'),
-        replace_parent=(offset > 0)
-    )
-    groups = ApiRequest('groups.get_groups', {
-        'user': uid,
-        'arg_offset': offset
-    })
-
-    if groups and groups['total']:
-        items = HTML.ElementFromString(groups['html'])
-
-        for item in items.xpath('//div[@data-group="item"]'):
-            info = item.xpath('.//a[contains(@class, "groups__name")]')[0]
-
-            title = u'%s' % info.text_content()
-
-            try:
-                thumb = ImageFromElementStyle(item.xpath(
-                    './/a[contains(@class, "groups__avatar")]'
-                )[0])
-            except:
-                thumb = R(ICON)
-                pass
-
-            oc.add(DirectoryObject(
-                key=Callback(
-                    callback_action,
-                    uid=info.get('href'),
-                    title=title,
-                ),
-                title=title,
-                thumb=thumb
-            ))
-
-        if groups['next_page_size'] > 0:
-            oc.add(NextPageObject(
-                key=Callback(
-                    callback_page,
-                    uid=uid,
-                    offset=groups['new_offset']
-                ),
-                title=u'%s' % L('More groups')
-            ))
-
-    return oc
-
-
-def GetFriends(callback_action, callback_page, uid, offset):
-    '''Get friends container with custom callback'''
-    oc = ObjectContainer(
-        title2=u'%s' % L('My friends'),
-        replace_parent=(offset > 0)
-    )
-
-    # TODO &mna=643427&mnb=995542408
-    friends = ApiRequest('video.friends', {
-        'user': uid,
-        'arg_limit': MAILRU_LIMIT,
-        'arg_offset': offset
-    })
-
-    if friends and friends['Total'] and len(friends['Data']):
-        '''
-        Avatar32URL, FirstName, Avatar180URL, AvatarChangeTime,
-        SmallAvatarURL, Dir, AuID, LastName, VideoCount,
-        Email, Name, IsFemale
-        '''
-        for item in friends['Data']:
-            title = u'%s' % item['Name']
-            if 'Avatar180URL' in item:
-                thumb = item['Avatar180URL']
-            else:
-                thumb = R(ICON)
-
-            oc.add(DirectoryObject(
-                key=Callback(
-                    callback_action,
-                    uid=item['Email'],
-                    title=title,
-                ),
-                title=title,
-                thumb=thumb
-            ))
-
-        offset = friends['NewOffset']
-        if offset < friends['Total']:
-            oc.add(NextPageObject(
-                key=Callback(
-                    callback_page,
-                    uid=uid,
-                    offset=offset
-                ),
-                title=u'%s' % L('Next page')
-            ))
-
-    return oc
-
-
-def ImageFromElementStyle(element):
-    return Regex(
-        'background-image\s*:\s*url\(\'([^\']+)\'\)'
-    ).search(
-        element.get('style')
-    ).group(1)
-
-
-def ApiRequest(method, params):
-    HTTP.Headers['Cookie'] = Dict['auth']
-    params['func_name'] = method
-    params['ajax_call'] = 1
-    params['ret_json'] = 1
-    params.update(Dict['params'])
-
-# http://my.mail.ru/cgi-bin/my/ajax?user=vladimirsleptsov1961@bk.ru&ajax_call=1&func_name=video.get_list&mna=671969&mnb=2210013916&arg_type=related&arg_limit=40&arg_offset=0&arg_item_id=&arg_is_legal=0&arg_pwidth=120&arg_pheight=67
-# http://my.mail.ru/cgi-bin/my/ajax?user=vladimirsleptsov1961@bk.ru&ajax_call=1&func_name=video.get_list&mna=671969&mnb=2210013916&arg_type=user&arg_limit=40&arg_item_id=13&arg_offset_item_id=0&arg_offset=0&arg_pwidth=120&arg_pheight=67
-
-    res = JSON.ObjectFromURL(
-        'http://my.mail.ru/cgi-bin/my/ajax?%s' % urlencode(params),
-    )
-
-    # Log.Debug(res)
-
-    if res and len(res) > 2 and res[1] == 'OK':
-        return res[len(res)-1]
-
-    return False
-
-
-def CheckAuth():
-    HTTP.ClearCookies()
-    Dict['auth'] = False
-
-    res = HTTP.Request(
-        'https://auth.mail.ru/cgi-bin/auth',
-        {
-            'page': MAILRU_URL,
-            'FailPage': MAILRU_URL+'cgi-bin/login?fail=1',
-            'Login': Prefs['username'],
-            'Domain': 'mail.ru',
-            'Password': Prefs['password']
-        },
-        cacheTime=0
-    )
-
-    if (res and Prefs['username'] in HTTP.CookiesForURL(MAILRU_URL)):
-        res = HTTP.Request(
-            (
-                'https://auth.mail.ru/sdc?fail=http:%2F%2Fmy.mail.ru'
-                '%2Fcgi-bin%2Flogin&from=http%3A%2F%2Fmy.mail.ru%2F'
-            ),
-            cacheTime=0
-        )
-        if 'set-cookie' in res.headers:
-            try:
-                res = JSON.ObjectFromString(
-                    HTML.ElementFromString(res.content).xpath(
-                        '//script[@data-mru-fragment="client-server"]'
-                    )[0].text_content()
-                )
-                Log.Debug(res)
-                del res['magic']['myhost']
-
-                Dict['auth'] = HTTP.CookiesForURL(MAILRU_URL)
-                Dict['params'] = res['magic']
-                return True
-            except:
-                pass
-
-    return False
-
-
-class VideoProxyHandler(SimpleHTTPRequestHandler):
-    def do_GET(self):
-
-        Log.Debug('Proxy request %s' % self.path)
-
-        params = dict([
-            p.split('=') for p in self.path[
-                self.path.index('?')+1:
-            ].split('&')
-        ])
-
-        try:
-            info = JSON.ObjectFromURL(
-                urllib2.url2pathname(params['url']),
-                cacheTime=0
-            )
-        except:
-            info = None
-
-        if not info or 'videos' not in info:
-            self.send_error(403)
-            return None
-
-        info = info['videos']
-        url = None
-        for item in info:
-            if item['key'] == params['key']:
-                url = item['url']
-                break
-
-        if not url:
-            url = info[len(info)-1]['url']
-
-        Log.Debug('Start processing %s' % url)
-        headers = self.headers
-
-        Log.Debug(headers)
-
-        del headers['Host']
-        del headers['Referer']
-        headers['Cookie'] = HTTP.CookiesForURL(url)
-        headers['User-Agent'] = MAILRU_USER_AGENT
-
-        self.copyfile(
-            urllib2.urlopen(urllib2.Request(url, headers=headers)),
-            self.wfile
-        )
