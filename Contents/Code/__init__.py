@@ -295,10 +295,10 @@ def VideoView(vid, url):
 
     ext_meta = False
 
-    if 'videos' in res:
-        meta['HDexist'] = len(res['videos']) > 1
-    elif 'providerKey' in res:
+    if not 'videos' in res:
         ext_meta = API.GetExternalMeta(res)
+    else:
+        meta['HDexist'] = len(res['videos']) > 1
 
     Log.Debug(ext_meta)
 
@@ -372,15 +372,20 @@ def GetVideoObject(item, ext_meta=False):
 
     if ext_meta and ext_meta['is_embed']:
         return URLService.MetadataObjectForURL(ext_meta['embed_url'])
-    elif ext_meta and ext_meta['videos']:
-        resolutions = ext_meta['videos']
+
+    resolutions = {}
+    if ext_meta:
+        for r in ext_meta['videos']:
+            resolutions[r] = Proxy.GetUrl(
+                item['MetaUrl'],
+                r,
+                ext_meta['videos'][r]['url']
+            )
     else:
-        resolutions = {
-            '360': Proxy.GetUrl(item['MetaUrl'], '360p')
-        }
+        resolutions['360'] = Proxy.GetUrl(item['MetaUrl'], '360')
         if item['HDexist']:
-            resolutions['480'] = Proxy.GetUrl(item['MetaUrl'], '480p')
-            resolutions['720'] = Proxy.GetUrl(item['MetaUrl'], '720p')
+            resolutions['480'] = Proxy.GetUrl(item['MetaUrl'], '480')
+            resolutions['720'] = Proxy.GetUrl(item['MetaUrl'], '720')
 
     return VideoClipObject(
         key=Callback(

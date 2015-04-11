@@ -118,15 +118,20 @@ def CheckAuth():
 
 
 def GetExternalMeta(meta):
+
+    if 'providerKey' not in meta:
+        return None
+
     res = XML.ElementFromURL(
         'http://out.pladform.ru/getVideo?videoid=%s&pl=%s' % (
             meta['providerKey'],
             meta['meta']['playerId']
-        )
+        ),
+        cacheTime=0
     )
 
     if not res:
-        return False
+        return None
 
     ret = {
         'is_embed': False,
@@ -146,7 +151,11 @@ def GetExternalMeta(meta):
             ret['embed_url'] = 'http://rutube.ru/video/%s/' % src.text
             break
         elif etype == 'video':
-            ret['videos'][qmap[src.get('quality')]] = src.text
+            quality = qmap[src.get('quality')]
+            ret['videos'][quality] = {
+                'key': quality+'p',
+                'url': src.text,
+            }
 
     if not ret['videos'] and not ret['is_embed']:
         src = res.find('external_embed')
@@ -157,7 +166,7 @@ def GetExternalMeta(meta):
     else:
         return ret
 
-    return False
+    return None
 
 
 def GroupFromElement(element):

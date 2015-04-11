@@ -31,15 +31,17 @@ import SocketServer
 from urllib import urlencode
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 from common import MAILRU_USER_AGENT
+from api import GetExternalMeta
 
 
-def GetUrl(url, key):
+def GetUrl(url, key, v_url=''):
     return 'http://%s:%d/?%s' % (
         Network.Address,
         int(Prefs['proxy_port']),
         urlencode({
             'url': url,
-            'key': key
+            'key': key,
+            'v_url': v_url,
         })
     )
 
@@ -67,36 +69,54 @@ class Handler(SimpleHTTPRequestHandler):
             ].split('&')
         ])
 
-        try:
-            info = JSON.ObjectFromURL(
-                urllib2.url2pathname(params['url']),
-                cacheTime=0
-            )
-        except:
-            info = None
+        if 'v_url' in params and params['v_url']:
+            url = urllib2.url2pathname(params['v_url'])
+        else:
+            try:
+                info = JSON.ObjectFromURL(
+                    urllib2.url2pathname(params['url']),
+                    cacheTime=0
+                )
+            except:
+                info = None
 
-        if not info or 'videos' not in info:
-            self.send_error(403)
-            return None
+            if not info:
+                self.send_error(403)
+                return None
 
-        info = info['videos']
-        url = None
-        for item in info:
-            if item['key'] == params['key']:
-                url = item['url']
-                break
+            if 'videos' in info:
+                info = info['videos']
+            else:
+                ext_meta = GetExternalMeta(info)
+                Log.Debug(ext_meta)
+                if ext_meta and not ext_meta['is_embed']:
+                    info = ext_meta['videos'].values()
+                else:
+                    self.send_error(403)
+                    return None
 
-        if not url:
-            url = info[len(info)-1]['url']
+            url = None
+            key = params['key']+'p'
+
+            for item in info:
+                if item['key'] == key:
+                    url = item['url']
+                    break
+
+            if not url:
+                url = info[len(info)-1]['url']
 
         Log.Debug('Start processing %s' % url)
         headers = self.headers
 
-        Log.Debug(headers)
-
         del headers['Host']
         del headers['Referer']
-        headers['Cookie'] = HTTP.CookiesForURL(url)
+
+        try:
+            headers['Cookie'] = HTTP.CookiesForURL(url)
+        except:
+            pass
+
         headers['User-Agent'] = MAILRU_USER_AGENT
 
         self.copyfile(
