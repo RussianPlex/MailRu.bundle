@@ -40,7 +40,7 @@ def Request(method, params):
     params.update(Dict['params'])
 
     res = JSON.ObjectFromURL(
-        'http://my.mail.ru/cgi-bin/my/ajax?%s' % urlencode(params),
+        '%scgi-bin/my/ajax?%s' % (MAILRU_URL, urlencode(params)),
     )
 
     if res and len(res) > 2 and res[1] == 'OK':
@@ -49,7 +49,7 @@ def Request(method, params):
     return False
 
 
-def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None):
+def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None, **kwargs):
     if ltype is None:
         ltype = 'user' if '@' in uid else 'community_items'
 
@@ -64,12 +64,12 @@ def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None):
         params['arg_is_legal'] = 1
 
     if album_id is not None:
-        if ltype == 'lvalbums':
-            params['arg_category'] = album_id
-        elif ltype == 'community_items':
+        if ltype == 'community_items':
             params['arg_album_id'] = album_id
         else:
             params['arg_album'] = album_id
+
+    params.update(**kwargs)
 
     return Request('video.get_list', params)
 
@@ -167,6 +167,30 @@ def GetExternalMeta(meta):
         return ret
 
     return None
+
+
+def CheckMetaUrl(item):
+
+    if 'MetaUrl' in item:
+        return
+
+    res = Request('video.get_item', {
+        'user': item['OwnerEmail'],
+        'arg_id': item['ID'],
+    })
+
+    if res:
+        try:
+            res = JSON.ObjectFromString(
+                HTML.ElementFromString(res).xpath(
+                    '//script[@data-type="album-json"]'
+                )[0].text_content()
+            )
+            item['MetaUrl'] = res['signVideoUrl']
+        except:
+            pass
+
+    Log.Debug(item)
 
 
 def GroupFromElement(element):

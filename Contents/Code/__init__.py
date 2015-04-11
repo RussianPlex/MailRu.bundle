@@ -114,8 +114,7 @@ def VideoMainMenu():
 
     oc.add(InputDirectoryObject(
         key=Callback(
-            Search,
-            search_type='video',
+            VideoSearch,
             title=u'%s' % L('Search Video')
         ),
         title=u'%s' % L('Search'), prompt=u'%s' % L('Search Video')
@@ -183,7 +182,7 @@ def VideoCatalogueAlbums(cat, title, offset=0):
     albums = API.GetVideoItems(
         uid=Prefs['username'],
         ltype='lvalbums',
-        album_id=cat,
+        arg_category=cat,
         offset=offset,
         limit=Prefs['video_per_page']
     )
@@ -224,14 +223,15 @@ def VideoCatalogueAlbums(cat, title, offset=0):
 
 
 @route(PREFIX_V + '/list')
-def VideoList(uid, title, album_id=None, offset=0, ltype=None):
+def VideoList(uid, title, album_id=None, offset=0, ltype=None, **kwargs):
 
     res = API.GetVideoItems(
         uid=uid,
         ltype=ltype,
         album_id=album_id,
         offset=offset,
-        limit=Prefs['video_per_page']
+        limit=Prefs['video_per_page'],
+        **kwargs
     )
 
     if not res or not res['total']:
@@ -244,7 +244,6 @@ def VideoList(uid, title, album_id=None, offset=0, ltype=None):
     )
 
     for item in res['items']:
-        GetVideoObject(item)
         try:
             oc.add(GetVideoObject(item))
         except Exception as e:
@@ -262,7 +261,8 @@ def VideoList(uid, title, album_id=None, offset=0, ltype=None):
                 title=title,
                 ltype=ltype,
                 album_id=album_id,
-                offset=offset
+                offset=offset,
+                **kwargs
             ),
             title=u'%s' % L('Next page')
         ))
@@ -271,7 +271,7 @@ def VideoList(uid, title, album_id=None, offset=0, ltype=None):
 
 
 @route(PREFIX_V + '/view')
-def VideoView(vid, url):
+def VideoView(url):
 
     try:
         res = JSON.ObjectFromURL(url)
@@ -284,8 +284,8 @@ def VideoView(vid, url):
 
     meta = {  # Emulate list item
         'MetaUrl': url,
-        'ItemId': vid,
         'Title': res['meta']['title'],
+        'UrlHtml': res['meta']['url'].replace(Common.MAILRU_URL, ''),
         'Comment':  '',
         'ImageUrlI': res['meta']['poster'],
         'Time': res['meta']['timestamp'],
@@ -305,6 +305,18 @@ def VideoView(vid, url):
     return ObjectContainer(
         objects=[GetVideoObject(meta, ext_meta)],
         content=ContainerContent.GenericVideos
+    )
+
+
+def VideoSearch(query, title=u'%s' % L('Search'), offset=0):
+    return VideoList(
+        Prefs['username'],
+        title,
+        offset=offset,
+        ltype='search',
+        arg_tag=query,
+        arg_hd_exists=1 if Prefs['search_hd'] else '',
+        arg_unsafe=1 if Prefs['search_adult'] else '',
     )
 
 
@@ -373,6 +385,8 @@ def GetVideoObject(item, ext_meta=False):
     if ext_meta and ext_meta['is_embed']:
         return URLService.MetadataObjectForURL(ext_meta['embed_url'])
 
+    API.CheckMetaUrl(item)
+
     resolutions = {}
     if ext_meta:
         for r in ext_meta['videos']:
@@ -387,13 +401,13 @@ def GetVideoObject(item, ext_meta=False):
             resolutions['480'] = Proxy.GetUrl(item['MetaUrl'], '480')
             resolutions['720'] = Proxy.GetUrl(item['MetaUrl'], '720')
 
+
     return VideoClipObject(
         key=Callback(
             VideoView,
-            vid=item['ItemId'],
             url=item['MetaUrl'],
         ),
-        rating_key='%s' % item['ItemId'],
+        rating_key='%s' % item['UrlHtml'],
         title=u'%s' % item['Title'],
         source_title=TITLE,
         summary=item['Comment'],
@@ -437,8 +451,7 @@ def MusicMainMenu():
 
     oc.add(InputDirectoryObject(
         key=Callback(
-            Search,
-            search_type='audio',
+            MusicSearch,
             title=u'%s' % L('Search Music')
         ),
         title=u'%s' % L('Search'), prompt=u'%s' % L('Search Music')
@@ -519,6 +532,10 @@ def MusicPlay(info):
         objects=[GetTrackObject(item)],
         content=ContainerContent.Tracks
     )
+
+
+def MusicSearch(query, title=u'%s' % L('Search'), offset=0):
+    pass
 
 
 # TODO - does not support
@@ -749,59 +766,6 @@ def GetPhotoObject(item):
 ###############################################################################
 # Common
 ###############################################################################
-
-def Search(query, title=u'%s' % L('Search'), search_type='video', offset=0):
-
-    is_video = search_type == 'video'
-
-    params = {
-        'sort': 2,
-        'offset': offset,
-        'count': Prefs[search_type + '_per_page'],
-        'q': query
-    }
-
-    if is_video:
-        if Prefs['search_hd']:
-            params['hd'] = 1
-        if Prefs['search_adult']:
-            params['adult'] = 1
-
-    res = API.Request(search_type+'.search', params)
-
-    if not res or not res['count']:
-        return Common.NoContents()
-
-    oc = ObjectContainer(
-        title2=(u'%s' % title),
-        replace_parent=(offset > 0),
-    )
-
-    if is_video:
-        method = GetVideoObject
-        oc.content = ContainerContent.GenericVideos
-    else:
-        method = GetTrackObject
-        oc.content = ContainerContent.Tracks
-
-    for item in res['items']:
-        oc.add(method(item))
-
-    offset = int(offset)+Common.MAILRU_LIMIT
-    if offset < res['count']:
-        oc.add(NextPageObject(
-            key=Callback(
-                Search,
-                query=query,
-                title=title,
-                search_type=search_type,
-                offset=offset
-            ),
-            title=u'%s' % L('Next page')
-        ))
-
-    return oc
-
 
 def BadAuthMessage():
     return MessageContainer(
