@@ -103,13 +103,13 @@ def VideoMainMenu():
     ))
 
     oc.add(DirectoryObject(
-        key=Callback(VideoListChannels, uid=Prefs['username'], all=True),
-        title=u'%s' % L('Channels')
+        key=Callback(VideoListChannels),
+        title=u'%s' % L('All channels')
     ))
 
-    oc.add(DirectoryObject( # FIXME
-        key=Callback(VideoListGroups, uid=Prefs['username']),
-        title=u'%s' % L('Catalogues')
+    oc.add(DirectoryObject(
+        key=Callback(VideoCatalogueGroups),
+        title=u'%s' % L('Catalogue')
     ))
 
     oc.add(InputDirectoryObject(
@@ -122,7 +122,6 @@ def VideoMainMenu():
     ))
 
     return AddVideoAlbums(oc, Prefs['username'])
-    return oc
 
 
 @route(PREFIX_V + '/groups')
@@ -145,31 +144,98 @@ def VideoAlbums(uid, title, offset=0):
 
 
 @route(PREFIX_V + '/channels')
-def VideoListChannels():
-    return
+def VideoListChannels(uid=None, offset=0):
+    return Common.GetChannels(VideoAlbums, VideoListChannels, uid, offset)
+
+
+@route(PREFIX_V + '/catalogue/groups')
+def VideoCatalogueGroups():
+    oc = ObjectContainer(
+        title2=L('Catalogue'),
+    )
+
+    for cat, title in {
+        'movies': L('Фильмы'),
+        'serials': L('Сериалы'),
+        'show': L('Телешоу'),
+        'mults': L('Мультфильмы'),
+        'music': L('Музыка'),
+        'tnt': L('ТНТ'),
+    }.iteritems():
+        oc.add(DirectoryObject(
+            key=Callback(
+                VideoCatalogueAlbums, cat=cat,
+                title=u'%s' % title,
+            ),
+            title=u'%s' % title,
+        ))
+
+    return oc
+
+
+@route(PREFIX_V + '/catalogue/albums')
+def VideoCatalogueAlbums(cat, title, offset=0):
+    oc = ObjectContainer(
+        title2=u'%s' % title,
+        replace_parent=(offset > 0)
+    )
+
+    albums = API.GetVideoItems(
+        uid=Prefs['username'],
+        ltype='lvalbums',
+        album_id=cat,
+        offset=offset,
+        limit=Prefs['video_per_page']
+    )
+
+    if albums and albums['total']:
+        for item in albums['items']:
+
+            if 'VideoUrl' in item:
+                oc.add(GetVideoObject(item))
+            else:
+                title = u'%s' % item['Name']
+
+                oc.add(DirectoryObject(
+                    key=Callback(
+                        VideoList,
+                        uid='pladform_video',
+                        title=title,
+                        album_id=item['Album']
+                    ),
+                    title=title,
+                    summary=u'%s' % item['Description'],
+                    thumb=item['PreviewUrl']
+                ))
+
+        offset = int(offset)+int(Prefs['video_per_page'])
+        if albums['total'] == int(Prefs['video_per_page']):
+            oc.add(NextPageObject(
+                key=Callback(
+                    VideoCatalogueAlbums,
+                    cat=cat,
+                    title=oc.title2,
+                    offset=offset
+                ),
+                title=u'%s' % L('More albums')
+            ))
+
+    return oc
 
 
 @route(PREFIX_V + '/list')
-def VideoList(uid, title, album_id=None, offset=0):
+def VideoList(uid, title, album_id=None, offset=0, ltype=None):
 
-    params = {
-        'user': uid,
-        'arg_limit': Prefs['video_per_page'],
-        'arg_offset': offset
-    }
-
-    if album_id is not None: # album
-        params['arg_album'] = album_id
-        params['arg_type'] = 'album_items'
-    elif '@' in uid:         # user
-        params['arg_type'] = 'user'
-    else:                    # group
-        params['arg_type'] = 'community_items'
-
-    res = API.Request('video.get_list', params)
+    res = API.GetVideoItems(
+        uid=uid,
+        ltype=ltype,
+        album_id=album_id,
+        offset=offset,
+        limit=Prefs['video_per_page']
+    )
 
     if not res or not res['total']:
-        return NoContents()
+        return Common.NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
@@ -178,6 +244,7 @@ def VideoList(uid, title, album_id=None, offset=0):
     )
 
     for item in res['items']:
+        GetVideoObject(item)
         try:
             oc.add(GetVideoObject(item))
         except Exception as e:
@@ -186,13 +253,14 @@ def VideoList(uid, title, album_id=None, offset=0):
             except:
                 continue
 
-    offset = offset+int(Prefs['video_per_page'])
+    offset = int(offset)+int(Prefs['video_per_page'])
     if offset < res['total']:
         oc.add(NextPageObject(
             key=Callback(
                 VideoList,
                 uid=uid,
                 title=title,
+                ltype=ltype,
                 album_id=album_id,
                 offset=offset
             ),
@@ -212,19 +280,30 @@ def VideoView(vid, url):
         pass
 
     if not res or 'meta' not in res:
-        return NoContents()
+        raise Ex.MediaNotAvailable
+
+    meta = {  # Emulate list item
+        'MetaUrl': url,
+        'ItemId': vid,
+        'Title': res['meta']['title'],
+        'Comment':  '',
+        'ImageUrlI': res['meta']['poster'],
+        'Time': res['meta']['timestamp'],
+        'Duration': res['meta']['duration'],
+        'HDexist': False,
+    }
+
+    ext_meta = False
+
+    if 'videos' in res:
+        meta['HDexist'] = len(res['videos']) > 1
+    elif 'providerKey' in res:
+        ext_meta = API.GetExternalMeta(res)
+
+    Log.Debug(ext_meta)
 
     return ObjectContainer(
-        objects=[GetVideoObject({  # Emulate list item
-            'MetaUrl': url,
-            'ItemId': vid,
-            'Title': res['meta']['title'],
-            'Comment':  '',
-            'ImageUrlI': res['meta']['poster'],
-            'Time': res['meta']['timestamp'],
-            'Duration': res['meta']['duration'],
-            'HDexist': len(res['videos']) > 1,
-        })],
+        objects=[GetVideoObject(meta, ext_meta)],
         content=ContainerContent.GenericVideos
     )
 
@@ -267,6 +346,7 @@ def AddVideoAlbums(oc, uid, offset=0):
                 key=Callback(
                     VideoList, uid=uid,
                     title=u'%s' % item['Name'],
+                    ltype='album_items',
                     album_id=item['ID']
                 ),
                 title=title,
@@ -288,13 +368,19 @@ def AddVideoAlbums(oc, uid, offset=0):
     return oc
 
 
-def GetVideoObject(item):
+def GetVideoObject(item, ext_meta=False):
 
-    resolutions = ['360']
-    if item['HDexist']:
-        resolutions.append('480')
-        resolutions.append('720')
-        resolutions.reverse()
+    if ext_meta and ext_meta['is_embed']:
+        return URLService.MetadataObjectForURL(ext_meta['embed_url'])
+    elif ext_meta and ext_meta['videos']:
+        resolutions = ext_meta['videos']
+    else:
+        resolutions = {
+            '360': Proxy.GetUrl(item['MetaUrl'], '360p')
+        }
+        if item['HDexist']:
+            resolutions['480'] = Proxy.GetUrl(item['MetaUrl'], '480p')
+            resolutions['720'] = Proxy.GetUrl(item['MetaUrl'], '720p')
 
     return VideoClipObject(
         key=Callback(
@@ -313,14 +399,14 @@ def GetVideoObject(item):
         items=[
             MediaObject(
                 parts=[PartObject(
-                    key=Proxy.GetUrl(item['MetaUrl'], r+'p')
+                    key=resolutions[r]
                 )],
                 video_resolution=r,
                 container=Container.MP4,
                 video_codec=VideoCodec.H264,
                 audio_codec=AudioCodec.AAC,
                 optimized_for_streaming=True
-            ) for r in resolutions
+            ) for r in sorted(resolutions.keys(), reverse=True)
         ]
     )
 
@@ -389,7 +475,7 @@ def MusicList(uid, title, album_id=None, offset=0):
     res = API.Request('audio.get', params)
 
     if not res or not res['count']:
-        return NoContents()
+        return Common.NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
@@ -557,7 +643,7 @@ def PhotoList(uid, title, album_id, offset=0):
     })
 
     if not res or not res['count']:
-        return NoContents()
+        return Common.NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
@@ -630,7 +716,7 @@ def AddPhotoAlbums(oc, uid, offset=0):
             ))
 
     if not len(oc.objects):
-        return NoContents()
+        return Common.NoContents()
 
     return oc
 
@@ -679,7 +765,7 @@ def Search(query, title=u'%s' % L('Search'), search_type='video', offset=0):
     res = API.Request(search_type+'.search', params)
 
     if not res or not res['count']:
-        return NoContents()
+        return Common.NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
@@ -716,11 +802,4 @@ def BadAuthMessage():
     return MessageContainer(
         header=u'%s' % L('Error'),
         message=u'%s' % L('NotAuth')
-    )
-
-
-def NoContents():
-    return ObjectContainer(
-        header=u'%s' % L('Error'),
-        message=u'%s' % L('No entries found')
     )

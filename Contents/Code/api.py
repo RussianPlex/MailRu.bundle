@@ -43,12 +43,35 @@ def Request(method, params):
         'http://my.mail.ru/cgi-bin/my/ajax?%s' % urlencode(params),
     )
 
-    # Log.Debug(res)
-
     if res and len(res) > 2 and res[1] == 'OK':
         return res[len(res)-1]
 
     return False
+
+
+def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None):
+    if ltype is None:
+        ltype = 'user' if '@' in uid else 'community_items'
+
+    params = {
+        'user': uid,
+        'arg_type': ltype,
+        'arg_limit': limit,
+        'arg_offset': offset
+    }
+
+    if uid == 'pladform_video':
+        params['arg_is_legal'] = 1
+
+    if album_id is not None:
+        if ltype == 'lvalbums':
+            params['arg_category'] = album_id
+        elif ltype == 'community_items':
+            params['arg_album_id'] = album_id
+        else:
+            params['arg_album'] = album_id
+
+    return Request('video.get_list', params)
 
 
 def CheckAuth():
@@ -90,6 +113,49 @@ def CheckAuth():
                 return True
             except:
                 pass
+
+    return False
+
+
+def GetExternalMeta(meta):
+    res = XML.ElementFromURL(
+        'http://out.pladform.ru/getVideo?videoid=%s&pl=%s' % (
+            meta['providerKey'],
+            meta['meta']['playerId']
+        )
+    )
+
+    if not res:
+        return False
+
+    ret = {
+        'is_embed': False,
+        'videos': {}
+    }
+
+    qmap = {
+        'sd': '720',
+        'ld': '360',
+    }
+
+    for src in res.findall('src'):
+        etype = src.get('type')
+
+        if etype == 'rutube':
+            ret['is_embed'] = True
+            ret['embed_url'] = 'http://rutube.ru/video/%s/' % src.text
+            break
+        elif etype == 'video':
+            ret['videos'][qmap[src.get('quality')]] = src.text
+
+    if not ret['videos'] and not ret['is_embed']:
+        src = res.find('external_embed')
+        if src:
+            ret['is_embed'] = True
+            ret['embed_url'] = src.text
+            return ret
+    else:
+        return ret
 
     return False
 

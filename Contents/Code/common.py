@@ -85,6 +85,60 @@ def GetGroups(callback_action, callback_page, uid, offset):
     return oc
 
 
+def GetChannels(callback_action, callback_page, uid, offset):
+    '''Get groups container with custom callback'''
+    if uid:
+        method = 'video_channel.get_channels'
+        title = u'%s' % L('My channels')
+    else:
+        method = 'video_channel.get_channels_catalogue'
+        title = u'%s' % L('All channels')
+
+    items = API.Request(method, {
+        'user': uid,
+        'arg_offset': offset,
+        'arg_limit': MAILRU_LIMIT,
+    })
+
+    if items:
+        items = HTML.ElementFromString(items)
+
+    if not items:
+        return NoContents()
+
+    oc = ObjectContainer(
+        title2=title,
+        replace_parent=(offset > 0)
+    )
+
+    for item in items.xpath('//div[@data-type="item"]'):
+        info = item.xpath(
+            './/a[contains(@class, "b-catalog__channel-item__name")]'
+        )[0]
+
+        title = u'%s' % info.text_content()
+
+        try:
+            thumb = API.ImageFromElement(item.xpath(
+                './/a[contains(@class, "b-catalog__channel-item__avatar")]'
+            )[0])
+        except:
+            thumb = None
+            pass
+
+        oc.add(DirectoryObject(
+            key=Callback(
+                callback_action,
+                uid=API.GroupFromElement(info),
+                title=title,
+            ),
+            title=title,
+            thumb=thumb
+        ))
+
+    return oc
+
+
 def GetFriends(callback_action, callback_page, uid, offset):
     '''Get friends container with custom callback'''
     oc = ObjectContainer(
@@ -92,7 +146,6 @@ def GetFriends(callback_action, callback_page, uid, offset):
         replace_parent=(offset > 0)
     )
 
-    # TODO &mna=643427&mnb=995542408
     friends = API.Request('video.friends', {
         'user': uid,
         'arg_limit': MAILRU_LIMIT,
@@ -130,3 +183,10 @@ def GetFriends(callback_action, callback_page, uid, offset):
             ))
 
     return oc
+
+
+def NoContents():
+    return ObjectContainer(
+        header=u'%s' % L('Error'),
+        message=u'%s' % L('No entries found')
+    )
