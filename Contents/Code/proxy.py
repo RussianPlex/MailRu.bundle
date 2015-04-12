@@ -90,7 +90,7 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 ext_meta = GetExternalMeta(info)
                 Log.Debug(ext_meta)
-                if ext_meta and not ext_meta['is_embed']:
+                if ext_meta and ext_meta['videos']:
                     info = ext_meta['videos'].values()
                 else:
                     self.send_error(403)

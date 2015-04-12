@@ -134,8 +134,8 @@ def GetExternalMeta(meta):
         return None
 
     ret = {
-        'is_embed': False,
-        'videos': {}
+        'external': None,
+        'videos': {},
     }
 
     qmap = {
@@ -144,25 +144,19 @@ def GetExternalMeta(meta):
     }
 
     for src in res.findall('src'):
-        etype = src.get('type')
-
-        if etype == 'rutube':
-            ret['is_embed'] = True
-            ret['embed_url'] = 'http://rutube.ru/video/%s/' % src.text
-            break
-        elif etype == 'video':
+        if src.get('type') == 'video':
             quality = qmap[src.get('quality')]
             ret['videos'][quality] = {
                 'key': quality+'p',
                 'url': src.text,
             }
 
-    if not ret['videos'] and not ret['is_embed']:
-        src = res.find('external_embed')
-        if src:
-            ret['is_embed'] = True
-            ret['embed_url'] = src.text
+    if not ret['videos']:
+        try:
+            ret['external'] = res.find('external_embed').text
             return ret
+        except:
+            pass
     else:
         return ret
 

@@ -380,8 +380,8 @@ def AddVideoAlbums(oc, uid, offset=0):
 
 def GetVideoObject(item, ext_meta=False):
 
-    if ext_meta and ext_meta['is_embed']:
-        return URLService.MetadataObjectForURL(ext_meta['embed_url'])
+    if ext_meta and ext_meta['external']:
+        return URLService.MetadataObjectForURL(ext_meta['external'])
 
     API.CheckMetaUrl(item)
 
