@@ -75,13 +75,14 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 info = JSON.ObjectFromURL(
                     urllib2.url2pathname(params['url']),
-                    cacheTime=0
+                    cacheTime=5
                 )
             except:
                 info = None
 
             if not info:
                 self.send_error(403)
+                self.headers['Sisa'] = 'keep-alive'
                 return None
 
             if 'videos' in info:
@@ -107,19 +108,32 @@ class Handler(SimpleHTTPRequestHandler):
                 url = info[len(info)-1]['url']
 
         Log.Debug('Start processing %s' % url)
-        headers = self.headers
 
-        del headers['Host']
-        del headers['Referer']
+        headers = {
+            'User-Agent': MAILRU_USER_AGENT,
+        }
+
+        Log.Debug(self.headers)
+
+        for key in ('Range', 'Accept', 'Connection'):
+            val = self.headers.get(key, None)
+            if val:
+                headers[key] = val
 
         try:
-            headers['Cookie'] = HTTP.CookiesForURL(url)
+            val = HTTP.CookiesForURL(url)
+            if val:
+                headers['Cookie'] = val
         except:
             pass
 
-        headers['User-Agent'] = MAILRU_USER_AGENT
+        ph = urllib2.urlopen(urllib2.Request(url, headers=headers))
+        self.protocol_version = 'HTTP/1.1'
+        self.send_response(ph.getcode())
+        self.wfile.write('%s' % ph.info())
+        self.end_headers()
 
         self.copyfile(
-            urllib2.urlopen(urllib2.Request(url, headers=headers)),
+            ph,
             self.wfile
         )

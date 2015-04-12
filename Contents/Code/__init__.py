@@ -150,7 +150,7 @@ def VideoListChannels(uid=None, offset=0):
 @route(PREFIX_V + '/catalogue/groups')
 def VideoCatalogueGroups():
     oc = ObjectContainer(
-        title2=L('Catalogue'),
+        title2=u'%s' % L('Catalogue'),
     )
 
     for cat, title in {
@@ -160,7 +160,7 @@ def VideoCatalogueGroups():
         'mults': L('Мультфильмы'),
         'music': L('Музыка'),
         'tnt': L('ТНТ'),
-    }.iteritems():
+    }.items():
         oc.add(DirectoryObject(
             key=Callback(
                 VideoCatalogueAlbums, cat=cat,
@@ -238,7 +238,7 @@ def VideoList(uid, title, album_id=None, offset=0, ltype=None, **kwargs):
         return Common.NoContents()
 
     oc = ObjectContainer(
-        title2=(u'%s' % title),
+        title2=u'%s' % title,
         content=ContainerContent.GenericVideos,
         replace_parent=(offset > 0)
     )
@@ -299,8 +299,6 @@ def VideoView(url):
         ext_meta = API.GetExternalMeta(res)
     else:
         meta['HDexist'] = len(res['videos']) > 1
-
-    Log.Debug(ext_meta)
 
     return ObjectContainer(
         objects=[GetVideoObject(meta, ext_meta)],
