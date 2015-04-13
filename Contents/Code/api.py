@@ -28,11 +28,11 @@
 from urllib import urlencode
 from common import MAILRU_URL
 
-THUMB_RE = Regex('background-image\s*:\s*url\(\'([^\']+)\'\)')
+THUMB_RE = Regex('background-image\s*:\s*url\(\'?([^\'\)]+)\'?\)')
 GROUP_RE = Regex('/[a-z]+/([^/]+)')
 
 
-def Request(method, params):
+def Request(method, params, full=False):
     HTTP.Headers['Cookie'] = Dict['auth']
     params['func_name'] = method
     params['ajax_call'] = 1
@@ -44,7 +44,7 @@ def Request(method, params):
     )
 
     if res and len(res) > 2 and res[1] == 'OK':
-        return res[len(res)-1]
+        return res if full else res[len(res)-1]
 
     return False
 
@@ -72,6 +72,25 @@ def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None, **kwargs):
     params.update(**kwargs)
 
     return Request('video.get_list', params)
+
+
+def GetPhotoAlbums(uid, path):
+    # try:
+    HTTP.Headers['Cookie'] = Dict['auth']
+    info = JSON.ObjectFromString(
+        HTML.ElementFromURL(MAILRU_URL+path+'photo').xpath((
+            '//div[@data-photo="albumsContainer"]'
+            '/script[@data-type="config"]'
+        ))[0].text_content()
+    )
+    return HTML.ElementFromString(
+        Request('photo.get_albums', {
+            'user': uid,
+            'arg_album_ids': JSON.StringFromObject(info['albumsAll'])
+        })
+    ).xpath('//div[@class="b-catalog__photo-albums-item"]')
+    # except:
+    #     return []
 
 
 def CheckAuth():
@@ -184,12 +203,18 @@ def CheckMetaUrl(item):
         except:
             pass
 
-    Log.Debug(item)
-
 
 def GroupFromElement(element):
     return GROUP_RE.search(element.get('href')).group(1)
 
 
+def AlbumFromElement(element):
+    path = element.get('href')
+    return path[path.rfind('/')+1:]
+
+
 def ImageFromElement(element):
-    return THUMB_RE.search(element.get('style')).group(1)
+    style = element.get('style')
+    if style:
+        return THUMB_RE.search(style).group(1)
+    return ''

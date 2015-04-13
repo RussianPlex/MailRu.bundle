@@ -67,6 +67,7 @@ def GetGroups(callback_action, callback_page, uid, offset):
                     callback_action,
                     uid=API.GroupFromElement(info),
                     title=title,
+                    path=info.get('href').replace('/?ref=', '/')
                 ),
                 title=title,
                 thumb=thumb
@@ -79,7 +80,7 @@ def GetGroups(callback_action, callback_page, uid, offset):
                     uid=uid,
                     offset=groups['new_offset']
                 ),
-                title=u'%s' % L('More groups')
+                title=u'%s' % L('Next page')
             ))
 
     return oc
@@ -166,6 +167,7 @@ def GetFriends(callback_action, callback_page, uid, offset):
                     callback_action,
                     uid=item['Email'],
                     title=title,
+                    path=item['Dir'],
                 ),
                 title=title,
                 thumb=item['Avatar180URL']

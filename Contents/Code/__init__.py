@@ -134,7 +134,7 @@ def VideoListFriends(uid, offset=0):
 
 
 @route(PREFIX_V + '/albums')
-def VideoAlbums(uid, title, offset=0):
+def VideoAlbums(uid, title, offset=0, path='/my/'):
     oc = ObjectContainer(
         title2=u'%s' % title,
         replace_parent=(offset > 0)
@@ -469,12 +469,12 @@ def MusicListFriends(uid, offset=0):
 
 
 @route(PREFIX_M + '/albums')
-def MusicAlbums(uid, title, offset=0):
+def MusicAlbums(uid, title, offset=0, path='/my/'):
     oc = ObjectContainer(
         title2=u'%s' % title,
         replace_parent=(offset > 0)
     )
-    return AddMusicAlbums(oc, uid, offset)
+    return AddMusicAlbums(oc, uid, path, offset)
 
 
 @route(PREFIX_M + '/list')
@@ -623,15 +623,15 @@ def PhotoMainMenu():
 
     oc = ObjectContainer(title2=TITLE, no_cache=True)
     oc.add(DirectoryObject(
-        key=Callback(PhotoListGroups, uid=Dict['user_id']),
+        key=Callback(PhotoListGroups, uid=Dict['username']),
         title=u'%s' % L('My groups')
     ))
     oc.add(DirectoryObject(
-        key=Callback(PhotoListFriends, uid=Dict['user_id']),
+        key=Callback(PhotoListFriends, uid=Dict['username']),
         title=u'%s' % L('My friends')
     ))
 
-    return AddPhotoAlbums(oc, Dict['user_id'])
+    return AddPhotoAlbums(oc, Dict['username'])
 
 
 @route(PREFIX_P + '/groups')
@@ -645,25 +645,23 @@ def PhotoListFriends(uid, offset=0):
 
 
 @route(PREFIX_P + '/albums')
-def PhotoAlbums(uid, title, offset=0):
+def PhotoAlbums(uid, title, offset=0, path='/my/'):
     oc = ObjectContainer(title2=u'%s' % title, replace_parent=(offset > 0))
-    return AddPhotoAlbums(oc, uid, offset)
+    return AddPhotoAlbums(oc, uid, path)
 
 
 @route(PREFIX_P + '/list')
 def PhotoList(uid, title, album_id, offset=0):
-    res = API.Request('photos.get', {
-        'owner_id': uid,
-        'album_id': album_id,
-        'extended': 0,
-        'photo_sizes': 1,
-        'rev': 1,
-        'count': Prefs['photos_per_page'],
-        'offset': offset
-    })
+    photos = API.Request('photo.photostream', {
+        'user': uid,
+        'arg_album_id': album_id,
+        'arg_limit': Prefs['photos_per_page'],
+        'arg_offset': offset
 
-    if not res or not res['count']:
-        return Common.NoContents()
+    }, True)
+
+    if not photos or len(photos) < 5 or not photos[4]:
+        return NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
@@ -671,11 +669,24 @@ def PhotoList(uid, title, album_id, offset=0):
         replace_parent=(offset > 0)
     )
 
-    for item in res['items']:
-        oc.add(GetPhotoObject(item))
+    total = int(photos[4])
+    items = HTML.ElementFromString(photos[3]).xpath(
+        '//div[contains(@class, "b-catalog__photo-item")]'
+    )
 
-    offset = int(offset)+Common.MAILRU_LIMIT
-    if offset < res['count']:
+    for item in items:
+        try:
+            link = item.find('a[@class="b-catalog__photo-item-img"]')
+            oc.add(PhotoObject(
+                key=link.get('data-filedimageurl'),
+                rating_key='%s%s' % (Common.MAILRU_URL, link.get('href')),
+                thumb=API.ImageFromElement(item)
+            ))
+        except:
+            pass
+
+    offset = int(offset)+int(Prefs['photos_per_page'])
+    if offset < total:
         oc.add(NextPageObject(
             key=Callback(
                 PhotoList,
@@ -690,75 +701,31 @@ def PhotoList(uid, title, album_id, offset=0):
     return oc
 
 
-def AddPhotoAlbums(oc, uid, offset=0):
+def AddPhotoAlbums(oc, uid, path='/my/'):
+    albums = API.GetPhotoAlbums(uid, path)
 
-    albums = API.Request('photos.getAlbums', {
-        'owner_id': uid,
-        'need_covers': 1,
-        'photo_sizes': 1,
-        'need_system': 1,
-        'count': Common.MAILRU_LIMIT,
-        'offset': offset
-    })
-
-    has_albums = albums and albums['count']
-    offset = int(offset)
-
-    if has_albums:
-        for item in albums['items']:
-            thumb = ''
-            for size in item['sizes']:
-                if size['type'] == 'p':
-                    thumb = size['src']
-                    break
-
+    if len(albums):
+        for item in albums:
+            link = item.xpath(
+                './a[contains(@class, "b-catalog__photo-albums-item-img")]'
+            )[0]
+            title = u'%s' % item.xpath(
+                './/a[contains(@class, "b-catalog__photo-albums-item-name")]'
+            )[0].text
             oc.add(DirectoryObject(
                 key=Callback(
                     PhotoList, uid=uid,
-                    title=u'%s' % item['title'],
-                    album_id=item['id']
+                    title=title,
+                    album_id=API.AlbumFromElement(link)
                 ),
-                summary=item['description'] if 'description' in item else '',
-                title=u'%s (%s)' % (item['title'], item['size']),
-                thumb=thumb,
-            ))
-
-        offset = offset+Common.MAILRU_LIMIT
-        if offset < albums['count']:
-            oc.add(NextPageObject(
-                key=Callback(
-                    PhotoAlbums,
-                    uid=uid,
-                    title=oc.title2,
-                    offset=offset
-                ),
-                title=u'%s' % L('More albums')
+                title=title,
+                thumb=API.ImageFromElement(link),
             ))
 
     if not len(oc.objects):
         return Common.NoContents()
 
     return oc
-
-
-def GetPhotoObject(item):
-
-    sizes = {}
-    for size in item['sizes']:
-        sizes[size['type']] = size['src']
-
-    url = ''
-    for size in ['z', 'y', 'x']:
-        if size in sizes:
-            url = sizes[size]
-            break
-
-    return PhotoObject(
-        key=url,
-        rating_key='%s.%s' % (Plugin.Identifier, item['id']),
-        summary=u'%s' % item['text'],
-        thumb=sizes['p'] if 'p' in sizes else ''
-    )
 
 
 ###############################################################################
