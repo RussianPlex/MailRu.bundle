@@ -46,8 +46,7 @@ TITLE = u'%s' % L('Title')
 ###############################################################################
 
 def Start():
-    # HTTP.CacheTime = CACHE_1HOUR
-    HTTP.CacheTime = 0 # FIXME
+    HTTP.CacheTime = CACHE_1HOUR
     HTTP.Headers['User-Agent'] = Common.MAILRU_USER_AGENT
 
     if ValidateAuth():

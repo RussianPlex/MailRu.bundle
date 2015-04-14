@@ -36,7 +36,7 @@ from api import GetExternalMeta
 
 def GetUrl(url='', key='', d_url=''):
     return 'http://%s:%d/?%s' % (
-        Network.Address,
+        GetIP(),
         int(Prefs['proxy_port']),
         urlencode({
             'url': url,
@@ -46,13 +46,19 @@ def GetUrl(url='', key='', d_url=''):
     )
 
 
+def GetIP():
+    if len(Prefs['proxy_ip']) > 6:
+        return Prefs['proxy_ip']
+    return Network.Address
+
+
 def Server():
     httpd = SocketServer.ForkingTCPServer(
-        (Network.Address, int(Prefs['proxy_port'])),
+        (GetIP(), int(Prefs['proxy_port'])),
         Handler
     )
     Log.Debug('Start proxy on  %s:%d' % (
-        Network.Address,
+        GetIP(),
         int(Prefs['proxy_port'])
     ))
     httpd.serve_forever()

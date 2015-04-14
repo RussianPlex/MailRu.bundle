@@ -16,7 +16,6 @@
 	"Search Video": "Search Video",
 	"Success": "Success",
 	"Title": "My World@Mail.Ru",
-	"Video Proxy Port": "Video Proxy Port",
 	"VideoTitle": "My World@Mail.Ru Video",
 	"NotAuth": "You must specify correct username and password in preferences",
 	"IncorrectPort": "Specified video proxy port is incorrect. Required 1025-65534",
@@ -32,4 +31,6 @@
 	"Catalogue": "Catalogue",
 	"Collections": "Collections",
 	"Recomendations": "Recomendations",
+	"Video Proxy Port": "Video Proxy Port",
+	"Video Proxy IP, keep empty for auto detection": "Video Proxy IP, keep empty for auto detection",
 }

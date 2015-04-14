@@ -13,6 +13,12 @@
 		"option": "hidden"
 	},
 	{
+		"id": "proxy_ip",
+		"type": "text",
+		"label": "Video Proxy IP, keep empty for auto detection",
+		"default": ""
+	},
+	{
 		"id": "proxy_port",
 		"type": "text",
 		"label": "Video Proxy Port",

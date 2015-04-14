@@ -17,7 +17,6 @@
 	"Success": "Успех",
 	"Title": "Мой Мир@Mail.Ru",
 	"VideoTitle": "Мой Мир@Mail.Ru Видео",
-	"Video Proxy Port": "Порт для Видео Прокси",
 	"NotAuth": "Вы должны указать правильные логин и пароль в настройках",
 	"IncorrectPort": "Неверно указан порт для Видео Прокси. Значение должно быть в диапазоне 1025-65534",
 	"Username": "Email",
@@ -32,5 +31,6 @@
 	"Catalogue": "Каталог",
 	"Collections": "Подборки",
 	"Recomendations": "Рекомендации",
-}
+	"Video Proxy Port": "Порт для Видео Прокси",
+	"Video Proxy IP, keep empty for auto detection": "IP для Видео Прокси, оставьте пустым для автоматического определения"
 }
