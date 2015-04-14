@@ -459,8 +459,8 @@ def MusicMainMenu():
         title=u'%s' % L('Recomendations')
     ))
     oc.add(DirectoryObject(
-        key=Callback(MusicSelections, uid=Prefs['username']),
-        title=u'%s' % L('Selections')
+        key=Callback(MusicCollections),
+        title=u'%s' % L('Collections')
     ))
     oc.add(InputDirectoryObject(
         key=Callback(
@@ -510,20 +510,61 @@ def MusicRecomendations(uid, title, offset=0):
         res=API.GetMusicRecomendations()
     )
 
+
+@route(PREFIX_M + '/collections')
+def MusicCollections(offset=0):
+    res = API.Request('music.collections', {
+        'arg_limit': Common.MAILRU_LIMIT,
+        'arg_offset': offset,
+    })
+
+    if not res or not res['Total']:
+        return Common.NoContents()
+
     oc = ObjectContainer(
-        title2=(u'%s' % L('Recomendations')),
-        content=ContainerContent.Tracks,
+        title2=u'%s' % L('Collections'),
         replace_parent=(offset > 0)
     )
+
+    for item in res['Data']:
+        title = u'%s' % item['Name']
+        summary = ', '.join(item['tags'])
+        if item['Description']:
+            summary = u"%s\n%s" % (summary, item['Description'])
+
+        oc.add(DirectoryObject(
+            key=Callback(
+                MusicCollection, uid='',
+                title=title,
+            ),
+            title=title,
+            thumb=item['CoverCroped'],
+            summary=u'%s' % summary
+        ))
+
+    offset = int(offset)+Common.MAILRU_LIMIT
+    if offset < res['Total']:
+        oc.add(NextPageObject(
+            key=Callback(MusicCollections, offset=offset),
+            title=u'%s' % L('Next page')
+        ))
     return oc
 
 
-@route(PREFIX_M + '/selections')
-def MusicSelections():
-    oc = ObjectContainer(
-        title2=(u'%s' % L('Selections')),
+@route(PREFIX_M + '/collections/view')
+def MusicCollection(uid, title, offset=0):
+    return Common.GetMusicList(
+        init_object=GetTrackObject,
+        callback_page=MusicCollection,
+        title=title,
+        uid=uid,
+        offset=0,
+        res=API.Request('music.collection', {
+            'arg_limit': Prefs['audio_per_page'],
+            'arg_offset': offset,
+            'arg_name': title,
+        })
     )
-    return oc
 
 
 @route(PREFIX_M + '/play')
@@ -638,7 +679,7 @@ def PhotoList(uid, title, album_id, offset=0):
     }, True)
 
     if not photos or len(photos) < 5 or not photos[4]:
-        return NoContents()
+        return Common.NoContents()
 
     oc = ObjectContainer(
         title2=(u'%s' % title),
