@@ -665,7 +665,11 @@ def PhotoListFriends(uid, offset=0):
 @route(PREFIX_P + '/albums')
 def PhotoAlbums(uid, title, offset=0, path='/my/'):
     oc = ObjectContainer(title2=u'%s' % title, replace_parent=(offset > 0))
-    return AddPhotoAlbums(oc, uid, path)
+    AddPhotoAlbums(oc, uid, path)
+    if not len(oc) == 1:
+        return PhotoList(uid, title, '')
+
+    return oc
 
 
 @route(PREFIX_P + '/list')
@@ -721,6 +725,9 @@ def PhotoList(uid, title, album_id, offset=0):
 
 def AddPhotoAlbums(oc, uid, path='/my/'):
     albums = API.GetPhotoAlbums(uid, path)
+
+    if not albums:
+        return
 
     if len(albums):
         for item in albums:
