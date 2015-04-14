@@ -446,7 +446,22 @@ def MusicMainMenu():
         key=Callback(MusicListFriends, uid=Prefs['username']),
         title=u'%s' % L('My friends')
     ))
-
+    oc.add(DirectoryObject(
+        key=Callback(MusicList, uid=Prefs['username'], title=L('My music')),
+        title=u'%s' % L('My music')
+    ))
+    oc.add(DirectoryObject(
+        key=Callback(
+            MusicRecomendations,
+            uid=Prefs['username'],
+            title=L('Recomendations')
+        ),
+        title=u'%s' % L('Recomendations')
+    ))
+    oc.add(DirectoryObject(
+        key=Callback(MusicSelections, uid=Prefs['username']),
+        title=u'%s' % L('Selections')
+    ))
     oc.add(InputDirectoryObject(
         key=Callback(
             MusicSearch,
@@ -455,66 +470,59 @@ def MusicMainMenu():
         title=u'%s' % L('Search'), prompt=u'%s' % L('Search Music')
     ))
 
-    return AddMusicAlbums(oc, Prefs['username'])
+    return oc
 
 
 @route(PREFIX_M + '/groups')
 def MusicListGroups(uid, offset=0):
-    return Common.GetGroups(MusicAlbums, MusicListGroups, uid, offset)
+    return Common.GetGroups(MusicList, MusicListGroups, uid, offset)
 
 
 @route(PREFIX_M + '/friends')
 def MusicListFriends(uid, offset=0):
-    return Common.GetFriends(MusicAlbums, MusicListFriends, uid, offset)
-
-
-@route(PREFIX_M + '/albums')
-def MusicAlbums(uid, title, offset=0, path='/my/'):
-    oc = ObjectContainer(
-        title2=u'%s' % title,
-        replace_parent=(offset > 0)
-    )
-    return AddMusicAlbums(oc, uid, path, offset)
+    return Common.GetFriends(MusicList, MusicListFriends, uid, offset)
 
 
 @route(PREFIX_M + '/list')
-def MusicList(uid, title, album_id=None, offset=0):
+def MusicList(uid, title, offset=0, path='/my/'):
+    return Common.GetMusicList(
+        init_object=GetTrackObject,
+        callback_page=MusicList,
+        title=title,
+        uid=uid,
+        offset=offset,
+        res=API.Request('audio.get', {
+            'user': uid,
+            'arg_limit': Prefs['audio_per_page'],
+            'arg_offset': offset
+        })
+    )
 
-    params = {
-        'owner_id': uid,
-        'count': Prefs['audio_per_page'],
-        'offset': offset
-    }
-    if album_id is not None:
-        params['album_id'] = album_id
 
-    res = API.Request('audio.get', params)
-
-    if not res or not res['count']:
-        return Common.NoContents()
+@route(PREFIX_M + '/recomendations')
+def MusicRecomendations(uid, title, offset=0):
+    return Common.GetMusicList(
+        init_object=GetTrackObject,
+        callback_page=MusicRecomendations,
+        title=title,
+        uid=uid,
+        offset=0,
+        res=API.GetMusicRecomendations()
+    )
 
     oc = ObjectContainer(
-        title2=(u'%s' % title),
+        title2=(u'%s' % L('Recomendations')),
         content=ContainerContent.Tracks,
         replace_parent=(offset > 0)
     )
+    return oc
 
-    for item in res['items']:
-        oc.add(GetTrackObject(item))
 
-    offset = int(offset)+Common.MAILRU_LIMIT
-    if offset < res['count']:
-        oc.add(NextPageObject(
-            key=Callback(
-                MusicList,
-                uid=uid,
-                title=title,
-                album_id=album_id,
-                offset=offset
-            ),
-            title=u'%s' % L('Next page')
-        ))
-
+@route(PREFIX_M + '/selections')
+def MusicSelections():
+    oc = ObjectContainer(
+        title2=(u'%s' % L('Selections')),
+    )
     return oc
 
 
@@ -533,75 +541,44 @@ def MusicPlay(info):
 
 
 def MusicSearch(query, title=u'%s' % L('Search'), offset=0):
-    pass
-
-
-# TODO - does not support
-def AddMusicAlbums(oc, uid, offset=0):
-
-    albums = API.Request('audio.getAlbums', {
-        'owner_id': uid,
-        'count': Common.MAILRU_LIMIT,
-        'offset': offset
-    })
-
-    has_albums = albums and albums['count']
-    offset = int(offset)
-
-    if not offset:
-        if not has_albums and not len(oc.objects):
-            return MusicList(uid=uid, title=u'%s' % L('All music'))
-        else:
-            oc.add(DirectoryObject(
-                key=Callback(
-                    MusicList, uid=uid,
-                    title=u'%s' % L('All music'),
-                ),
-                title=u'%s' % L('All music'),
-            ))
-
-    if has_albums:
-        for item in albums['items']:
-            # display playlist title and number of videos
-            title = u'%s: %s' % (L('Album'), item['title'])
-
-            oc.add(DirectoryObject(
-                key=Callback(
-                    MusicList, uid=uid,
-                    title=u'%s' % item['title'],
-                    album_id=item['id']
-                ),
-                title=title,
-            ))
-
-        offset = offset+Common.MAILRU_LIMIT
-        if offset < albums['count']:
-            oc.add(NextPageObject(
-                key=Callback(
-                    MusicAlbums,
-                    uid=uid,
-                    title=oc.title2,
-                    offset=offset
-                ),
-                title=u'%s' % L('More albums')
-            ))
-
-    return oc
+    return Common.GetMusicList(
+        init_object=GetTrackObject,
+        callback_page=MusicList,
+        title=title,
+        uid=Prefs['username'],
+        offset=offset,
+        res=API.Request('music.search', {
+            'arg_limit': Prefs['audio_per_page'],
+            'arg_offset': offset,
+            'arg_query': query,
+        })
+    )
 
 
 def GetTrackObject(item):
+    url = item['URL']
+    if url[:2] == '//':
+        url = 'http:'+url
+
+    info = JSON.StringFromObject({
+        'TrackID': item['TrackID'],
+        'Name': item['Name'],
+        'Author': item['Author'],
+        'DurationInSeconds': item['DurationInSeconds'],
+        'URL': url,
+    })
     return TrackObject(
-        key=Callback(MusicPlay, info=JSON.StringFromObject(item)),
-        # rating_key='%s.%s' % (Plugin.Identifier, item['id']),
+        key=Callback(MusicPlay, info=info),
+        # rating_key='%s.%s' % (Plugin.Identifier, item['TrackID']),
         # Rating key must be integer because PHT and PlexConnect
         # does not support playing queue with string rating key
-        rating_key=item['id'],
-        title=u'%s' % item['title'],
-        artist=u'%s' % item['artist'],
-        duration=int(item['duration'])*1000,
+        rating_key=item['TrackID'],
+        title=u'%s' % item['Name'],
+        artist=u'%s' % item['Author'],
+        duration=int(item['DurationInSeconds'])*1000,
         items=[
             MediaObject(
-                parts=[PartObject(key=item['url'])],
+                parts=[PartObject(key=Proxy.GetUrl(d_url=url))],
                 container=Container.MP3,
                 audio_codec=AudioCodec.MP3,
                 audio_channels=2,

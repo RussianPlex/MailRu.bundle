@@ -187,6 +187,34 @@ def GetFriends(callback_action, callback_page, uid, offset):
     return oc
 
 
+def GetMusicList(init_object, callback_page, title, uid, offset, res):
+    if not res or not int(res['Total']):
+        return NoContents()
+
+    oc = ObjectContainer(
+        title2=(u'%s' % title),
+        content=ContainerContent.Tracks,
+        replace_parent=(offset > 0)
+    )
+
+    for item in res['Data'] if 'Data' in res else res['List']:
+        oc.add(init_object(item))
+
+    offset = int(offset)+int(Prefs['audio_per_page'])
+    if offset < int(res['Total']):
+        oc.add(NextPageObject(
+            key=Callback(
+                callback_page,
+                uid=uid,
+                title=title,
+                offset=offset,
+            ),
+            title=u'%s' % L('Next page')
+        ))
+
+    return oc
+
+
 def NoContents():
     return ObjectContainer(
         header=u'%s' % L('Error'),

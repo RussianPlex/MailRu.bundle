@@ -34,14 +34,14 @@ from common import MAILRU_USER_AGENT
 from api import GetExternalMeta
 
 
-def GetUrl(url, key, v_url=''):
+def GetUrl(url='', key='', d_url=''):
     return 'http://%s:%d/?%s' % (
         Network.Address,
         int(Prefs['proxy_port']),
         urlencode({
             'url': url,
             'key': key,
-            'v_url': v_url,
+            'd_url': d_url,
         })
     )
 
@@ -69,8 +69,8 @@ class Handler(SimpleHTTPRequestHandler):
             ].split('&')
         ])
 
-        if 'v_url' in params and params['v_url']:
-            url = urllib2.url2pathname(params['v_url'])
+        if 'd_url' in params and params['d_url']:
+            url = urllib2.url2pathname(params['d_url'])
         else:
             try:
                 info = JSON.ObjectFromURL(
@@ -112,8 +112,6 @@ class Handler(SimpleHTTPRequestHandler):
         headers = {
             'User-Agent': MAILRU_USER_AGENT,
         }
-
-        Log.Debug(self.headers)
 
         for key in ('Range', 'Accept', 'Connection'):
             val = self.headers.get(key, None)

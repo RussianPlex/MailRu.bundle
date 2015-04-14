@@ -75,22 +75,43 @@ def GetVideoItems(uid, album_id=None, offset=0, limit=0, ltype=None, **kwargs):
 
 
 def GetPhotoAlbums(uid, path):
-    # try:
+    try:
+        HTTP.Headers['Cookie'] = Dict['auth']
+        info = JSON.ObjectFromString(
+            HTML.ElementFromURL(MAILRU_URL+path+'photo').xpath((
+                '//div[@data-photo="albumsContainer"]'
+                '/script[@data-type="config"]'
+            ))[0].text_content()
+        )
+        return HTML.ElementFromString(
+            Request('photo.get_albums', {
+                'user': uid,
+                'arg_album_ids': JSON.StringFromObject(info['albumsAll'])
+            })
+        ).xpath('//div[@class="b-catalog__photo-albums-item"]')
+    except:
+        return []
+
+
+def GetMusicRecomendations():
     HTTP.Headers['Cookie'] = Dict['auth']
-    info = JSON.ObjectFromString(
-        HTML.ElementFromURL(MAILRU_URL+path+'photo').xpath((
-            '//div[@data-photo="albumsContainer"]'
-            '/script[@data-type="config"]'
-        ))[0].text_content()
+    params = {
+        'ajax_call': 1,
+        'ret_json': 1,
+    }
+    params.update(Dict['params'])
+
+    res = JSON.ObjectFromURL(
+        '%s+/audio/recom_for_uid?%s' % (MAILRU_URL, urlencode(params)),
+        cacheTime=0,
     )
-    return HTML.ElementFromString(
-        Request('photo.get_albums', {
-            'user': uid,
-            'arg_album_ids': JSON.StringFromObject(info['albumsAll'])
-        })
-    ).xpath('//div[@class="b-catalog__photo-albums-item"]')
-    # except:
-    #     return []
+
+    if res and res['data']:
+        return {
+            'Total': len(res['data']),
+            'List': res['data'],
+        }
+    return None
 
 
 def CheckAuth():
