@@ -29,6 +29,9 @@ import api as API
 import proxy as Proxy
 import common as Common
 
+from updater import Updater
+from zlib import crc32
+
 PREFIX_V = '/video/mailru'
 PREFIX_M = '/music/mailru'
 PREFIX_P = '/photos/mailru'
@@ -39,7 +42,6 @@ ICON_V = 'icon-video.png'
 ICON_M = 'icon-music.png'
 ICON_P = 'icon-photo.png'
 TITLE = u'%s' % L('Title')
-
 
 ###############################################################################
 # Init
@@ -86,6 +88,8 @@ def VideoMainMenu():
         return BadAuthMessage()
 
     oc = ObjectContainer(title2=TITLE, no_cache=True)
+
+    Updater(PREFIX_V+'/update', oc)
 
     oc.add(DirectoryObject(
         key=Callback(VideoListChannels, uid=Prefs['username']),
@@ -437,6 +441,9 @@ def MusicMainMenu():
         return BadAuthMessage()
 
     oc = ObjectContainer(title2=TITLE, no_cache=True)
+
+    Updater(PREFIX_M+'/update', oc)
+
     oc.add(DirectoryObject(
         key=Callback(MusicListGroups, uid=Prefs['username']),
         title=u'%s' % L('My groups')
@@ -600,8 +607,12 @@ def GetTrackObject(item):
     if url[:2] == '//':
         url = 'http:'+url
 
+    track_id = item['TrackID'] if 'TrackID' in item else '0'
+    if not track_id and 'FileID' in item:
+        track_id = crc32(item['FileID'])
+
     info = JSON.StringFromObject({
-        'TrackID': item['TrackID'],
+        'TrackID': track_id,
         'Name': item['Name'],
         'Author': item['Author'],
         'DurationInSeconds': item['DurationInSeconds'],
@@ -609,10 +620,7 @@ def GetTrackObject(item):
     })
     return TrackObject(
         key=Callback(MusicPlay, info=info),
-        # rating_key='%s.%s' % (Plugin.Identifier, item['TrackID']),
-        # Rating key must be integer because PHT and PlexConnect
-        # does not support playing queue with string rating key
-        rating_key=item['TrackID'],
+        rating_key=track_id,
         title=u'%s' % item['Name'],
         artist=u'%s' % item['Author'],
         duration=int(item['DurationInSeconds'])*1000,
@@ -639,6 +647,9 @@ def PhotoMainMenu():
         return BadAuthMessage()
 
     oc = ObjectContainer(title2=TITLE, no_cache=True)
+
+    Updater(PREFIX_P+'/update', oc)
+
     oc.add(DirectoryObject(
         key=Callback(PhotoListGroups, uid=Dict['username']),
         title=u'%s' % L('My groups')

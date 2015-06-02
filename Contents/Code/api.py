@@ -98,11 +98,12 @@ def GetMusicRecomendations():
     params = {
         'ajax_call': 1,
         'ret_json': 1,
+        'func_name': 'audio.recommendation',
     }
     params.update(Dict['params'])
 
     res = JSON.ObjectFromURL(
-        '%s+/audio/recom_for_uid?%s' % (MAILRU_URL, urlencode(params)),
+        '%s+/music/recommendation/?%s' % (MAILRU_URL, urlencode(params)),
         cacheTime=0,
     )
 

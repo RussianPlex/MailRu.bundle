@@ -173,13 +173,12 @@ def GetFriends(callback_action, callback_page, uid, offset):
                 thumb=item['Avatar180URL']
             ))
 
-        offset = friends['NewOffset']
-        if offset < friends['Total']:
+        if 'NewOffset' in friends and friends['NewOffset'] < friends['Total']:
             oc.add(NextPageObject(
                 key=Callback(
                     callback_page,
                     uid=uid,
-                    offset=offset
+                    offset=friends['NewOffset']
                 ),
                 title=u'%s' % L('Next page')
             ))
