@@ -6,6 +6,7 @@
 
 На текущий момент поддерживается
 -------
+**Плагин больше не поддерживается**
 
 * Видеозаписи, аудиозаписи, фотографии
 * Альбомы, рекомендации, музыкальные подборки
@@ -30,6 +31,8 @@ My World&#064;Mail.Ru Plex Plugin allows to browse media content from russian so
 
 Current status
 -------
+
+**This plugin is no longer supported**
 
 * Support video, music and photos
 * Support albums, recomendations, music collections
